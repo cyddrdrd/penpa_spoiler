@@ -1,5 +1,11 @@
 const PENPA_BASE = "https://swaroopg92.github.io/penpa-edit/";
 
+// Replace this with your actual Cloudflare Worker URL.
+// Example:
+// const TINYURL_EXPANDER_WORKER = "https://penpa-tinyurl-expander.cyddrdrd.workers.dev/";
+const TINYURL_EXPANDER_WORKER = "https://your-worker-name.yourname.workers.dev/";
+
+
 async function expandShortUrlIfNeeded(url) {
   url = url.trim();
 
@@ -7,84 +13,61 @@ async function expandShortUrlIfNeeded(url) {
     return url;
   }
 
-  const services = [
-    async function tryUnshortenMe(shortUrl) {
-      const apiUrl = "https://unshorten.me/json/" + encodeURIComponent(shortUrl);
-      const response = await fetch(apiUrl);
-
-      if (!response.ok) {
-        throw new Error("unshorten.me failed");
-      }
-
-      const data = await response.json();
-
-      return (
-        data.resolved_url ||
-        data.resolvedUrl ||
-        data.destination ||
-        data.url ||
-        ""
-      );
-    },
-
-    async function tryUnshortenIt(shortUrl) {
-      const apiUrl =
-        "https://unshorten.it/json?url=" + encodeURIComponent(shortUrl);
-
-      const response = await fetch(apiUrl);
-
-      if (!response.ok) {
-        throw new Error("unshorten.it failed");
-      }
-
-      const data = await response.json();
-
-      return (
-        data.resolved_url ||
-        data.resolvedUrl ||
-        data.long_url ||
-        data.longUrl ||
-        data.url ||
-        ""
-      );
-    }
-  ];
-
-  const errors = [];
-
-  for (const service of services) {
-    try {
-      const expanded = await service(url);
-
-      if (!expanded) {
-        errors.push("Empty expanded URL");
-        continue;
-      }
-
-      const decodedExpanded = decodeURIComponent(expanded);
-
-      // Important validation:
-      // Some URL expansion services drop the # fragment.
-      // For Penpa answer-check links, that fragment often contains a=.
-      if (
-        decodedExpanded.includes("p=") &&
-        decodedExpanded.includes("a=")
-      ) {
-        return decodedExpanded;
-      }
-
-      errors.push("Expanded URL did not contain both p= and a=: " + decodedExpanded);
-    } catch (err) {
-      errors.push(err.message);
-    }
+  if (
+    !TINYURL_EXPANDER_WORKER ||
+    TINYURL_EXPANDER_WORKER.includes("your-worker-name")
+  ) {
+    throw new Error(
+      "TinyURL support needs a Cloudflare Worker URL. " +
+      "Please set TINYURL_EXPANDER_WORKER in converter.js, or paste the full Penpa URL instead."
+    );
   }
 
-  throw new Error(
-    "TinyURL was expanded, but the expanded URL did not contain both p= and a=. " +
-    "This often happens because some URL-expansion services drop the Penpa # fragment. " +
-    "Please open the TinyURL once, copy the full Penpa URL from the browser address bar, and paste that full URL instead."
-  );
+  const workerUrl =
+    TINYURL_EXPANDER_WORKER +
+    "?url=" +
+    encodeURIComponent(url);
+
+  const response = await fetch(workerUrl);
+
+  if (!response.ok) {
+    throw new Error(
+      "Could not expand TinyURL. Please paste the full Penpa URL instead."
+    );
+  }
+
+  const data = await response.json();
+
+  const expanded =
+    data.expandedUrl ||
+    data.expanded_url ||
+    data.resolvedUrl ||
+    data.resolved_url ||
+    data.url ||
+    "";
+
+  if (!expanded) {
+    throw new Error(
+      "TinyURL expansion failed. Please paste the full Penpa URL instead."
+    );
+  }
+
+  const decodedExpanded = decodeURIComponent(expanded);
+
+  if (
+    !decodedExpanded.includes("p=") ||
+    !decodedExpanded.includes("a=")
+  ) {
+    throw new Error(
+      "TinyURL was expanded, but the expanded URL did not contain both p= and a=. " +
+      "The TinyURL itself may not contain the full answer-check data, or the redirect lost the Penpa fragment. " +
+      "Please open the TinyURL once, copy the full Penpa URL from the browser address bar, and paste that full URL instead."
+    );
+  }
+
+  return decodedExpanded;
 }
+
 
 function parsePenpaParams(url) {
   url = url.trim();
@@ -122,6 +105,7 @@ function parsePenpaParams(url) {
   return params;
 }
 
+
 function base64ToBytes(b64) {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
@@ -132,6 +116,7 @@ function base64ToBytes(b64) {
 
   return bytes;
 }
+
 
 function bytesToBase64(bytes) {
   let binary = "";
@@ -145,11 +130,13 @@ function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
+
 function inflateRawB64(b64) {
   const compressed = base64ToBytes(b64);
   const decompressed = pako.inflateRaw(compressed);
   return new TextDecoder("utf-8").decode(decompressed);
 }
+
 
 function deflateRawB64(text) {
   const input = new TextEncoder().encode(text);
@@ -157,9 +144,11 @@ function deflateRawB64(text) {
   return bytesToBase64(compressed);
 }
 
+
 function jsString(x) {
   return JSON.stringify(String(x));
 }
+
 
 function normalizeAnswer(answer) {
   while (answer.length < 6) {
@@ -168,6 +157,7 @@ function normalizeAnswer(answer) {
 
   return answer;
 }
+
 
 function answerSurfaceEntries(items) {
   const out = [];
@@ -182,6 +172,7 @@ function answerSurfaceEntries(items) {
 
   return out;
 }
+
 
 function answerSegmentEntries(items) {
   const out = [];
@@ -205,6 +196,7 @@ function answerSegmentEntries(items) {
   return out;
 }
 
+
 function answerNumberEntries(items) {
   const out = [];
 
@@ -222,6 +214,7 @@ function answerNumberEntries(items) {
 
   return out;
 }
+
 
 function buildAnswerObject(answer) {
   answer = normalizeAnswer(answer);
@@ -256,6 +249,7 @@ function buildAnswerObject(answer) {
     "}"
   );
 }
+
 
 function buildAnswerHistoryObject(answer) {
   answer = normalizeAnswer(answer);
@@ -336,6 +330,7 @@ function buildAnswerHistoryObject(answer) {
   );
 }
 
+
 function isPenpaObjectLine(line) {
   return (
     line.startsWith("{") &&
@@ -346,6 +341,7 @@ function isPenpaObjectLine(line) {
   );
 }
 
+
 function findProblemLine(lines) {
   for (let i = 0; i < lines.length; i++) {
     if (isPenpaObjectLine(lines[i])) {
@@ -355,6 +351,7 @@ function findProblemLine(lines) {
 
   throw new Error("Could not find the problem object line.");
 }
+
 
 function upgradeToolState(lines) {
   if (lines.length <= 2) return;
@@ -382,6 +379,7 @@ function upgradeToolState(lines) {
     lines[2] = candidate;
   }
 }
+
 
 function addSolutionSuffixToTitle(lines) {
   if (!lines.length) return;
@@ -429,6 +427,7 @@ function addSolutionSuffixToTitle(lines) {
     newTitle +
     metadata.slice(titleEnd);
 }
+
 
 async function convertPenpaUrl(inputUrl) {
   inputUrl = await expandShortUrlIfNeeded(inputUrl);
@@ -479,4 +478,3 @@ async function convertPenpaUrl(inputUrl) {
 
   return `${PENPA_BASE}#m=edit&p=${newP}`;
 }
-
