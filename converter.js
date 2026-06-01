@@ -9,63 +9,39 @@ const TINYURL_EXPANDER_WORKER = "https://your-worker-name.yourname.workers.dev/"
 async function expandShortUrlIfNeeded(url) {
   url = url.trim();
 
-  if (!url.toLowerCase().includes("tinyurl.com/")) {
+  const match = url.match(/tinyurl\.com\/(.+)/);
+
+  if (!match) {
     return url;
   }
 
-  if (
-    !TINYURL_EXPANDER_WORKER ||
-    TINYURL_EXPANDER_WORKER.includes("your-worker-name")
-  ) {
-    throw new Error(
-      "TinyURL support needs a Cloudflare Worker URL. " +
-      "Please set TINYURL_EXPANDER_WORKER in converter.js, or paste the full Penpa URL instead."
-    );
-  }
+  const tinyId = match[1];
 
-  const workerUrl =
-    TINYURL_EXPANDER_WORKER +
-    "?url=" +
-    encodeURIComponent(url);
-
-  const response = await fetch(workerUrl);
+  const response = await fetch(
+    "https://marktekfan-api.azurewebsites.net/tinyurl/" + tinyId
+  );
 
   if (!response.ok) {
+    throw new Error("Could not expand TinyURL.");
+  }
+
+  const text = await response.text();
+  const result = JSON.parse(text);
+
+  if (!result.success || !result.longurl) {
+    throw new Error("TinyURL expansion failed.");
+  }
+
+  const expanded = result.longurl;
+
+  if (!expanded.includes("p=") || !expanded.includes("a=")) {
     throw new Error(
-      "Could not expand TinyURL. Please paste the full Penpa URL instead."
+      "TinyURL expanded, but the expanded URL does not contain both p= and a=. " +
+      "The TinyURL may not be an answer-check Penpa link."
     );
   }
 
-  const data = await response.json();
-
-  const expanded =
-    data.expandedUrl ||
-    data.expanded_url ||
-    data.resolvedUrl ||
-    data.resolved_url ||
-    data.url ||
-    "";
-
-  if (!expanded) {
-    throw new Error(
-      "TinyURL expansion failed. Please paste the full Penpa URL instead."
-    );
-  }
-
-  const decodedExpanded = decodeURIComponent(expanded);
-
-  if (
-    !decodedExpanded.includes("p=") ||
-    !decodedExpanded.includes("a=")
-  ) {
-    throw new Error(
-      "TinyURL was expanded, but the expanded URL did not contain both p= and a=. " +
-      "The TinyURL itself may not contain the full answer-check data, or the redirect lost the Penpa fragment. " +
-      "Please open the TinyURL once, copy the full Penpa URL from the browser address bar, and paste that full URL instead."
-    );
-  }
-
-  return decodedExpanded;
+  return expanded;
 }
 
 
