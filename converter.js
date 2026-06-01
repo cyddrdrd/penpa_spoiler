@@ -3,47 +3,48 @@ const PENPA_BASE = "https://swaroopg92.github.io/penpa-edit/";
 // Replace this with your actual Cloudflare Worker URL.
 // Example:
 // const TINYURL_EXPANDER_WORKER = "https://penpa-tinyurl-expander.cyddrdrd.workers.dev/";
-const TINYURL_EXPANDER_WORKER = "https://your-worker-name.yourname.workers.dev/";
+const TINYURL_EXPANDER_WORKER = "https://tinyurl-expander.dyl99dyl.workers.dev/";
 
 
 async function expandShortUrlIfNeeded(url) {
   url = url.trim();
 
-  const match = url.match(/tinyurl\.com\/(.+)/);
+  const match = url.match(/tinyurl\.com\/(.+)/i);
 
   if (!match) {
     return url;
   }
 
-  const tinyId = match[1];
+  const workerBase = "https://penpa-tinyurl-expander.yourname.workers.dev/";
 
-  const response = await fetch(
-    "https://marktekfan-api.azurewebsites.net/tinyurl/" + tinyId
-  );
+  const apiUrl = workerBase + "?url=" + encodeURIComponent(url);
+
+  const response = await fetch(apiUrl);
 
   if (!response.ok) {
-    throw new Error("Could not expand TinyURL.");
+    throw new Error("Could not expand TinyURL. Please paste the full Penpa URL instead.");
   }
 
-  const text = await response.text();
-  const result = JSON.parse(text);
+  const data = await response.json();
 
-  if (!result.success || !result.longurl) {
-    throw new Error("TinyURL expansion failed.");
+  if (!data.success || !data.longurl) {
+    throw new Error(
+      "TinyURL expansion failed: " +
+      (data.error || "unknown error")
+    );
   }
 
-  const expanded = result.longurl;
+  const expanded = data.longurl;
 
   if (!expanded.includes("p=") || !expanded.includes("a=")) {
     throw new Error(
-      "TinyURL expanded, but the expanded URL does not contain both p= and a=. " +
+      "TinyURL was expanded, but the expanded URL does not contain both p= and a=. " +
       "The TinyURL may not be an answer-check Penpa link."
     );
   }
 
   return expanded;
 }
-
 
 function parsePenpaParams(url) {
   url = url.trim();
