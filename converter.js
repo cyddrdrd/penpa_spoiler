@@ -417,6 +417,48 @@ async function convertPenpaUrl(inputUrl) {
     throw new Error("Input URL has no a= answer-check payload.");
   }
 
+  /*
+    Special case:
+    Some Penpa links are already edit-mode links with l=solvedup, for example:
+
+      ?m=edit&p=...&a=...&l=solvedup
+
+    For these links, Penpa itself knows how to load/duplicate the solution.
+    If we manually decode a= and insert it into p= again, the grid can become broken.
+    So here we only:
+      1. decode p=
+      2. add " (solution)" to the title
+      3. upgrade tool state if needed
+      4. re-output p= together with the original a= and l=solvedup
+
+    This mimics the "clone grid fixes it" behavior without user action.
+  */
+  if (params["l"] === "solvedup") {
+    const pText = inflateRawB64(params["p"]);
+    const lines = pText.split("\n");
+
+    addSolutionSuffixToTitle(lines);
+    upgradeToolState(lines);
+
+    const newPText = lines.join("\n");
+    const newP = deflateRawB64(newPText);
+
+    if (inflateRawB64(newP) !== newPText) {
+      throw new Error("Compression/decompression round-trip failed.");
+    }
+
+    return `${PENPA_BASE}#m=edit&p=${newP}&a=${params["a"]}&l=solvedup`;
+  }
+
+  /*
+    Normal case:
+    Standard solve-mode answer-check link:
+      ?m=solve&p=...&a=...
+    or
+      #m=solve&p=...&a=...
+
+    Here we decode a= and reconstruct the visible answer layer.
+  */
   const pText = inflateRawB64(params["p"]);
   const aText = inflateRawB64(params["a"]);
 
