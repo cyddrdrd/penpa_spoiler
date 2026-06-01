@@ -83,27 +83,27 @@
 </head>
 
 <body>
-  <h1>Penpa Automatic Solver</h1>
+  <h1>Penpa+ Converter</h1>
 
   <p>
-    Convert a Penpa answer-check solve link into an editable Penpa solution link.
+    Convert a Penpa+ link with answer check into an editable Penpa+ link with solution.
   </p>
 
   <div class="note">
-    Paste a Penpa answer-check solve link containing both <code>p=</code> and <code>a=</code>.
-    Full Penpa links and <code>tinyurl.com</code> links are supported.
+    Paste a link with answer check.
+    <code>Penpa+</code>code and <code>tinyurl.com</code> links are both supported.
   </div>
 
-  <label for="inputUrl">Input Penpa solve link</label>
-  <textarea id="inputUrl" rows="8" placeholder="Paste Penpa solve link or TinyURL here..."></textarea>
+  <label for="inputUrl"></label>
+  <textarea id="inputUrl" rows="8" placeholder="Paste your Penpa+ link or TinyURL here..."></textarea>
 
   <button id="convertOpenButton">Convert and Open</button>
   <button id="convertButton" class="secondary">Convert</button>
 
   <div id="status" class="status"></div>
 
-  <label for="outputUrl">Output editable solution link</label>
-  <textarea id="outputUrl" rows="8" readonly placeholder="The editable solution link will appear here..."></textarea>
+  <label for="outputUrl"></label>
+  <textarea id="outputUrl" rows="8" readonly placeholder="Link with solution..."></textarea>
 
   <button id="copyButton" class="secondary">Copy url to Clipboard</button>
 
