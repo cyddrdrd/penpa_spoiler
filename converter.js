@@ -315,14 +315,20 @@ function findProblemLine(lines) {
   throw new Error("Could not find the problem object line.");
 }
 
-
 function upgradeToolState(lines) {
   if (lines.length <= 2) return;
 
+  // Case 1:
+  // line 2 is already a full tool-state object.
+  // We still must normalize qa from pu_a to pu_q.
   if (lines[2].startsWith("{") && lines[2].includes("z9:")) {
+    lines[2] = lines[2].replace(/z9:zA/g, "z9:zQ");
+    lines[2] = lines[2].replace(/"qa":"pu_a"/g, '"qa":"pu_q"');
     return;
   }
 
+  // Case 2:
+  // old/compact solve link. Find a full tool-state object later and copy it.
   let candidate = null;
 
   for (const line of lines) {
@@ -338,11 +344,11 @@ function upgradeToolState(lines) {
   }
 
   if (candidate !== null) {
-    candidate = candidate.replace(/z9:zA/, "z9:zQ");
+    candidate = candidate.replace(/z9:zA/g, "z9:zQ");
+    candidate = candidate.replace(/"qa":"pu_a"/g, '"qa":"pu_q"');
     lines[2] = candidate;
   }
 }
-
 
 function addSolutionSuffixToTitle(lines) {
   if (!lines.length) return;
