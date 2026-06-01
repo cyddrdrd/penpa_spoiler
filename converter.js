@@ -15,7 +15,7 @@ async function expandShortUrlIfNeeded(url) {
     return url;
   }
 
-  const workerBase = "https://penpa-tinyurl-expander.yourname.workers.dev/";
+  const workerBase = "https://tinyurl-expander.dyl99dyl.workers.dev/";
 
   const apiUrl = workerBase + "?url=" + encodeURIComponent(url);
 
