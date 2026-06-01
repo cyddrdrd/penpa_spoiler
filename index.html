@@ -1,24 +1,551 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>Penpa Automatic Solver</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 0 20px;
+      line-height: 1.5;
+      color: #222;
+    }
+
+    h1 {
+      margin-bottom: 0.2em;
+    }
+
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 14px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      resize: vertical;
+    }
+
+    button {
+      margin-top: 12px;
+      margin-right: 8px;
+      padding: 9px 16px;
+      border: none;
+      border-radius: 8px;
+      background: #24292f;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #444c56;
+    }
+
+    .secondary {
+      background: #6e7781;
+    }
+
+    .status {
+      margin-top: 12px;
+      font-weight: 600;
+    }
+
+    .error {
+      color: #b00020;
+    }
+
+    .success {
+      color: #0969da;
+    }
+
+    .note {
+      background: #f6f8fa;
+      border: 1px solid #d0d7de;
+      padding: 12px;
+      border-radius: 8px;
+      margin: 16px 0;
+    }
+
+    label {
+      font-weight: 600;
+      display: block;
+      margin-top: 18px;
+      margin-bottom: 6px;
+    }
+  </style>
 </head>
+
 <body>
   <h1>Penpa Automatic Solver</h1>
-  <p>Paste a Penpa answer-check solve link and convert it into an editable solution link.</p>
 
-  <textarea id="input" rows="8" cols="100" placeholder="Paste Penpa solve link here"></textarea>
-  <br>
+  <p>
+    Convert a Penpa answer-check solve link into an editable Penpa solution link.
+  </p>
+
+  <div class="note">
+    Paste a full Penpa link containing both <code>p=</code> and <code>a=</code>.
+    TinyURL expansion is not supported in the browser version yet because browsers may block redirected URL inspection.
+  </div>
+
+  <label for="inputUrl">Input Penpa solve link</label>
+  <textarea id="inputUrl" rows="8" placeholder="Paste Penpa solve link here..."></textarea>
+
   <button onclick="convert()">Convert</button>
+  <button class="secondary" onclick="copyOutput()">Copy output</button>
+  <button class="secondary" onclick="openOutput()">Open output</button>
 
-  <h2>Output</h2>
-  <textarea id="output" rows="8" cols="100" readonly></textarea>
+  <div id="status" class="status"></div>
+
+  <label for="outputUrl">Output editable solution link</label>
+  <textarea id="outputUrl" rows="8" readonly placeholder="The editable solution link will appear here..."></textarea>
 
   <script>
+    const PENPA_BASE = "https://swaroopg92.github.io/penpa-edit/";
+
+    function parsePenpaParams(url) {
+      url = url.trim();
+
+      let paramText;
+
+      if (url.includes("#")) {
+        paramText = url.split("#", 2)[1].trim();
+      } else if (url.includes("?")) {
+        paramText = url.split("?", 2)[1].trim();
+      } else {
+        throw new Error("URL has neither # fragment nor ? query parameters.");
+      }
+
+      const params = {};
+
+      for (const part of paramText.split("&")) {
+        if (!part) continue;
+
+        const eq = part.indexOf("=");
+
+        if (eq === -1) {
+          params[decodeURIComponent(part)] = "";
+        } else {
+          const key = part.slice(0, eq);
+          const value = part.slice(eq + 1);
+
+          // Important:
+          // Do NOT replace '+' with spaces.
+          // Penpa base64 payload uses literal '+'
+          params[decodeURIComponent(key)] = decodeURIComponent(value);
+        }
+      }
+
+      return params;
+    }
+
+    function base64ToBytes(b64) {
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+
+      return bytes;
+    }
+
+    function bytesToBase64(bytes) {
+      let binary = "";
+
+      const chunkSize = 0x8000;
+
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, chunk);
+      }
+
+      return btoa(binary);
+    }
+
+    function inflateRawB64(b64) {
+      const compressed = base64ToBytes(b64);
+      const decompressed = pako.inflateRaw(compressed);
+      return new TextDecoder("utf-8").decode(decompressed);
+    }
+
+    function deflateRawB64(text) {
+      const input = new TextEncoder().encode(text);
+      const compressed = pako.deflateRaw(input, { level: 9 });
+      return bytesToBase64(compressed);
+    }
+
+    function jsString(x) {
+      return JSON.stringify(String(x));
+    }
+
+    function answerSurfaceEntries(items) {
+      const out = [];
+
+      for (const item of items) {
+        const parts = String(item).split(",");
+        const cell = parts[0];
+        const style = parts.length >= 2 ? parts[1] : "3";
+        out.push(`${jsString(cell)}:${style}`);
+      }
+
+      return out;
+    }
+
+    function answerSegmentEntries(items) {
+      const out = [];
+
+      for (const item of items) {
+        const parts = String(item).split(",");
+
+        if (parts.length < 3) continue;
+
+        const p1 = parts[0];
+        const p2 = parts[1];
+        let style = parts[2];
+
+        if (style === "1") {
+          style = "3";
+        }
+
+        out.push(`${jsString(p1 + "," + p2)}:${style}`);
+      }
+
+      return out;
+    }
+
+    function answerNumberEntries(items) {
+      const out = [];
+
+      for (const item of items) {
+        const parts = String(item).split(",");
+
+        if (parts.length < 2) continue;
+
+        const cell = parts[0];
+        const value = parts[1];
+        const style = parts.length >= 3 ? parts[2] : "10";
+
+        out.push(`${jsString(cell)}:[${jsString(value)},${style},${jsString("1")}]`);
+      }
+
+      return out;
+    }
+
+    function normalizeAnswer(answer) {
+      while (answer.length < 6) {
+        answer.push([]);
+      }
+
+      return answer;
+    }
+
+    function buildAnswerObject(answer) {
+      answer = normalizeAnswer(answer);
+
+      const zS = answerSurfaceEntries(answer[0]).join(",");
+      const zL = answerSegmentEntries(answer[1]).join(",");
+      const zE = answerSegmentEntries(answer[2]).join(",");
+      const zW = answerSegmentEntries(answer[3]).join(",");
+      const zN = answerNumberEntries(answer[4]).join(",");
+
+      return (
+        "{" +
+        "zR:{z_:[]}," +
+        "zU:{z_:[]}," +
+        "z8:{z_:[]}," +
+        `zS:{${zS}},` +
+        `zN:{${zN}},` +
+        "z1:{}," +
+        "zY:{}," +
+        "zT:[]," +
+        "z3:[]," +
+        "zD:[]," +
+        "z0:[]," +
+        "z5:[]," +
+        `zL:{${zL}},` +
+        `zE:{${zE}},` +
+        `zW:{${zW}},` +
+        "zC:{}," +
+        "z4:{}," +
+        "z6:[]," +
+        "z7:[]" +
+        "}"
+      );
+    }
+
+    function buildAnswerHistoryObject(answer) {
+      answer = normalizeAnswer(answer);
+
+      const ops = [];
+      let counter = 1;
+
+      for (const item of answer[0]) {
+        const parts = String(item).split(",");
+        const cell = parts[0];
+        ops.push(`[zS,${cell},zO,${jsString("pu_a_col")},${counter}]`);
+        counter += 1;
+      }
+
+      for (const item of answer[1]) {
+        const parts = String(item).split(",");
+        if (parts.length >= 2) {
+          const key = parts[0] + "," + parts[1];
+          ops.push(`[zL,${jsString(key)},zO,${jsString("pu_a_col")},0]`);
+        }
+      }
+
+      for (const item of answer[2]) {
+        const parts = String(item).split(",");
+        if (parts.length >= 2) {
+          const key = parts[0] + "," + parts[1];
+          ops.push(`[zE,${jsString(key)},zO,${jsString("pu_a_col")},0]`);
+        }
+      }
+
+      for (const item of answer[3]) {
+        const parts = String(item).split(",");
+        if (parts.length >= 2) {
+          const key = parts[0] + "," + parts[1];
+          ops.push(`[zW,${jsString(key)},zO,${jsString("pu_a_col")},0]`);
+        }
+      }
+
+      for (const item of answer[4]) {
+        const parts = String(item).split(",");
+        if (parts.length >= 2) {
+          const cell = parts[0];
+          const value = parts[1];
+          const style = parts.length >= 3 ? parts[2] : "10";
+          const num = `[${jsString(value)},${style},${jsString("1")}]`;
+          ops.push(`[zN,${cell},${num},${jsString("pu_a_col")},0]`);
+        }
+      }
+
+      return (
+        "{" +
+        "zR:{z_:[]}," +
+        "zU:{z_:[]}," +
+        `z8:{z_:[${ops.join(",")}]},` +
+        "zS:{}," +
+        "zN:{}," +
+        "z1:{}," +
+        "zY:{}," +
+        "zT:[]," +
+        "z3:[]," +
+        "zD:[]," +
+        "z0:[]," +
+        "z5:[]," +
+        "zL:{}," +
+        "zE:{}," +
+        "zW:{}," +
+        "zC:{}," +
+        "z4:{}," +
+        "z6:[]," +
+        "z7:[]" +
+        "}"
+      );
+    }
+
+    function isPenpaObjectLine(line) {
+      return (
+        line.startsWith("{") &&
+        line.includes("zS:{") &&
+        line.includes("zN:{") &&
+        line.includes("zL:{") &&
+        line.includes("zE:{")
+      );
+    }
+
+    function findProblemLine(lines) {
+      for (let i = 0; i < lines.length; i++) {
+        if (isPenpaObjectLine(lines[i])) {
+          return i;
+        }
+      }
+
+      throw new Error("Could not find the problem object line.");
+    }
+
+    function upgradeToolState(lines) {
+      if (lines.length <= 2) return;
+
+      if (lines[2].startsWith("{") && lines[2].includes("z9:")) {
+        return;
+      }
+
+      let candidate = null;
+
+      for (const line of lines) {
+        if (
+          line.startsWith("{") &&
+          line.includes("z9:") &&
+          line.includes("zQ:") &&
+          line.includes("zA:")
+        ) {
+          candidate = line;
+          break;
+        }
+      }
+
+      if (candidate !== null) {
+        candidate = candidate.replace(/z9:zA/, "z9:zQ");
+        lines[2] = candidate;
+      }
+    }
+
+    function addSolutionSuffixToTitle(lines) {
+      if (!lines.length) return;
+
+      const metadata = lines[0];
+
+      const titleMarker = "Title: ";
+      const authorMarker = ",Author:";
+
+      const titleStart = metadata.indexOf(titleMarker);
+
+      if (titleStart === -1) {
+        const title = metadata.trim();
+
+        if (title && !title.toLowerCase().endsWith("(solution)")) {
+          lines[0] = metadata + " (solution)";
+        }
+
+        return;
+      }
+
+      const titleValueStart = titleStart + titleMarker.length;
+      let titleEnd = metadata.indexOf(authorMarker, titleValueStart);
+
+      if (titleEnd === -1) {
+        titleEnd = metadata.indexOf(",", titleValueStart);
+        if (titleEnd === -1) {
+          titleEnd = metadata.length;
+        }
+      }
+
+      const title = metadata.slice(titleValueStart, titleEnd);
+
+      if (!title.trim()) return;
+
+      if (title.trim().toLowerCase().endsWith("(solution)")) {
+        return;
+      }
+
+      const newTitle = title + " (solution)";
+
+      lines[0] =
+        metadata.slice(0, titleValueStart) +
+        newTitle +
+        metadata.slice(titleEnd);
+    }
+
+    function convertPenpaUrl(inputUrl) {
+      const params = parsePenpaParams(inputUrl);
+
+      if (!("p" in params)) {
+        throw new Error("Input URL has no p= payload.");
+      }
+
+      if (!("a" in params)) {
+        throw new Error("Input URL has no a= answer-check payload.");
+      }
+
+      const pText = inflateRawB64(params["p"]);
+      const aText = inflateRawB64(params["a"]);
+
+      const answer = JSON.parse(aText);
+      const lines = pText.split("\n");
+
+      addSolutionSuffixToTitle(lines);
+      upgradeToolState(lines);
+
+      const problemIndex = findProblemLine(lines);
+      const answerIndex = problemIndex + 1;
+
+      const answerObject = buildAnswerObject(answer);
+
+      if (answerIndex >= lines.length) {
+        lines.push(answerObject);
+      } else {
+        lines[answerIndex] = answerObject;
+      }
+
+      for (let i = answerIndex + 1; i < lines.length; i++) {
+        if (lines[i] === "x" && i > answerIndex + 5) {
+          lines[i] = buildAnswerHistoryObject(answer);
+          break;
+        }
+      }
+
+      const newPText = lines.join("\n");
+      const newP = deflateRawB64(newPText);
+
+      // Round-trip check.
+      if (inflateRawB64(newP) !== newPText) {
+        throw new Error("Compression/decompression round-trip failed.");
+      }
+
+      return `${PENPA_BASE}#m=edit&p=${newP}`;
+    }
+
+    function setStatus(message, type) {
+      const status = document.getElementById("status");
+      status.textContent = message;
+      status.className = "status " + type;
+    }
+
     function convert() {
-      document.getElementById("output").value =
-        "The converter code will go here after translating the Python script to JavaScript.";
+      const input = document.getElementById("inputUrl").value.trim();
+      const output = document.getElementById("outputUrl");
+
+      output.value = "";
+
+      if (!input) {
+        setStatus("Please paste a Penpa solve link first.", "error");
+        return;
+      }
+
+      try {
+        const result = convertPenpaUrl(input);
+        output.value = result;
+        setStatus("Converted successfully.", "success");
+      } catch (err) {
+        setStatus("Error: " + err.message, "error");
+      }
+    }
+
+    async function copyOutput() {
+      const output = document.getElementById("outputUrl").value.trim();
+
+      if (!output) {
+        setStatus("No output link to copy.", "error");
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(output);
+        setStatus("Output copied to clipboard.", "success");
+      } catch (err) {
+        setStatus("Could not copy automatically. Please copy it manually.", "error");
+      }
+    }
+
+    function openOutput() {
+      const output = document.getElementById("outputUrl").value.trim();
+
+      if (!output) {
+        setStatus("No output link to open.", "error");
+        return;
+      }
+
+      window.open(output, "_blank");
     }
   </script>
 </body>
