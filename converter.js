@@ -28,7 +28,16 @@ async function expandShortUrlIfNeeded(url) {
     );
   }
 
-  return data.longurl;
+  const expanded = data.longurl;
+
+  if (!expanded.includes("p=") || !expanded.includes("a=")) {
+    throw new Error(
+      "TinyURL was expanded, but the expanded URL does not contain both p= and a=. " +
+      "The TinyURL may not be an answer-check Penpa link."
+    );
+  }
+
+  return expanded;
 }
 
 
