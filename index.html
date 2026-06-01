@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Penpa Automatic Solver</title>
+</head>
+<body>
+  <h1>Penpa Automatic Solver</h1>
+  <p>Paste a Penpa answer-check solve link and convert it into an editable solution link.</p>
+
+  <textarea id="input" rows="8" cols="100" placeholder="Paste Penpa solve link here"></textarea>
+  <br>
+  <button onclick="convert()">Convert</button>
+
+  <h2>Output</h2>
+  <textarea id="output" rows="8" cols="100" readonly></textarea>
+
+  <script>
+    function convert() {
+      document.getElementById("output").value =
+        "The converter code will go here after translating the Python script to JavaScript.";
+    }
+  </script>
+</body>
+</html>
