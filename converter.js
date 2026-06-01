@@ -15,9 +15,7 @@ async function expandShortUrlIfNeeded(url) {
     return url;
   }
 
-  const workerBase = "https://tinyurl-expander.dyl99dyl.workers.dev/";
-
-  const apiUrl = workerBase + "?url=" + encodeURIComponent(url);
+  const apiUrl = TINYURL_EXPANDER_WORKER + "?url=" + encodeURIComponent(url);
 
   const response = await fetch(apiUrl);
 
@@ -45,6 +43,7 @@ async function expandShortUrlIfNeeded(url) {
 
   return expanded;
 }
+
 
 function parsePenpaParams(url) {
   url = url.trim();
