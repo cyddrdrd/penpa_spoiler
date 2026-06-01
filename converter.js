@@ -28,16 +28,7 @@ async function expandShortUrlIfNeeded(url) {
     );
   }
 
-  const expanded = data.longurl;
-
-  if (!expanded.includes("p=") || !expanded.includes("a=")) {
-    throw new Error(
-      "TinyURL was expanded, but the expanded URL does not contain both p= and a=. " +
-      "The TinyURL may not be an answer-check Penpa link."
-    );
-  }
-
-  return expanded;
+  return data.longurl;
 }
 
 
@@ -401,10 +392,45 @@ function addSolutionSuffixToTitle(lines) {
 }
 
 
+function isSolvedDuplicateUrl(params) {
+  return params["l"] === "solvedup";
+}
+
+
+function convertSolvedDuplicateUrl(params) {
+  if (!("p" in params)) {
+    throw new Error("Input URL has no p= payload.");
+  }
+
+  const pText = inflateRawB64(params["p"]);
+  const lines = pText.split("\n");
+
+  addSolutionSuffixToTitle(lines);
+  upgradeToolState(lines);
+
+  const newPText = lines.join("\n");
+  const newP = deflateRawB64(newPText);
+
+  if (inflateRawB64(newP) !== newPText) {
+    throw new Error("Compression/decompression round-trip failed.");
+  }
+
+  return `${PENPA_BASE}#m=edit&p=${newP}`;
+}
+
+
 async function convertPenpaUrl(inputUrl) {
   inputUrl = await expandShortUrlIfNeeded(inputUrl);
 
   const params = parsePenpaParams(inputUrl);
+
+  // Special case:
+  // Penpa solve-progress duplicate URL.
+  // Do not decode a= and do not inject a reconstructed answer layer.
+  // The p= payload already contains the duplicated solve-progress layer.
+  if (isSolvedDuplicateUrl(params)) {
+    return convertSolvedDuplicateUrl(params);
+  }
 
   if (!("p" in params)) {
     throw new Error("Input URL has no p= payload.");
@@ -423,49 +449,15 @@ async function convertPenpaUrl(inputUrl) {
   addSolutionSuffixToTitle(lines);
   upgradeToolState(lines);
 
+  const problemIndex = findProblemLine(lines);
+  const answerIndex = problemIndex + 1;
+
   const answerObject = buildAnswerObject(answer);
 
-  /*
-    Find all Penpa object-layer lines.
-
-    Standard payload usually has:
-      objectLines[0] = problem layer
-      objectLines[1] = answer / solution layer
-
-    l=solvedup/edit-mode payloads may have a slightly different layout,
-    so do not blindly use problemIndex + 1.
-  */
-  const objectLines = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    if (isPenpaObjectLine(lines[i])) {
-      objectLines.push(i);
-    }
-  }
-
-  if (objectLines.length === 0) {
-    throw new Error("Could not find the problem object line.");
-  }
-
-  const problemIndex = objectLines[0];
-
-  let answerIndex;
-
-  if (objectLines.length >= 2) {
-    /*
-      If a second object layer already exists, replace it.
-      This is safer for l=solvedup links because their payload may already have
-      a placeholder/solution object somewhere other than problemIndex + 1.
-    */
-    answerIndex = objectLines[1];
-    lines[answerIndex] = answerObject;
+  if (answerIndex >= lines.length) {
+    lines.push(answerObject);
   } else {
-    /*
-      If only one object layer exists, insert the answer object immediately
-      after the problem object.
-    */
-    answerIndex = problemIndex + 1;
-    lines.splice(answerIndex, 0, answerObject);
+    lines[answerIndex] = answerObject;
   }
 
   for (let i = answerIndex + 1; i < lines.length; i++) {
@@ -482,10 +474,5 @@ async function convertPenpaUrl(inputUrl) {
     throw new Error("Compression/decompression round-trip failed.");
   }
 
-  /*
-    Always output a clean setter-mode edit link.
-    No a=.
-    No l=solvedup.
-  */
   return `${PENPA_BASE}#m=edit&p=${newP}`;
 }
