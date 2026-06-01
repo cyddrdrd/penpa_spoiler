@@ -1,7 +1,4 @@
 const PENPA_BASE = "https://swaroopg92.github.io/penpa-edit/";
-
-// Replace this with your actual Cloudflare Worker URL.
-// Example:
 const TINYURL_EXPANDER_WORKER = "https://tinyurl-expand.cyddrdrd.workers.dev/";
 
 
@@ -417,48 +414,6 @@ async function convertPenpaUrl(inputUrl) {
     throw new Error("Input URL has no a= answer-check payload.");
   }
 
-  /*
-    Special case:
-    Some Penpa links are already edit-mode links with l=solvedup, for example:
-
-      ?m=edit&p=...&a=...&l=solvedup
-
-    For these links, Penpa itself knows how to load/duplicate the solution.
-    If we manually decode a= and insert it into p= again, the grid can become broken.
-    So here we only:
-      1. decode p=
-      2. add " (solution)" to the title
-      3. upgrade tool state if needed
-      4. re-output p= together with the original a= and l=solvedup
-
-    This mimics the "clone grid fixes it" behavior without user action.
-  */
-  if (params["l"] === "solvedup") {
-    const pText = inflateRawB64(params["p"]);
-    const lines = pText.split("\n");
-
-    addSolutionSuffixToTitle(lines);
-    upgradeToolState(lines);
-
-    const newPText = lines.join("\n");
-    const newP = deflateRawB64(newPText);
-
-    if (inflateRawB64(newP) !== newPText) {
-      throw new Error("Compression/decompression round-trip failed.");
-    }
-
-    return `${PENPA_BASE}#m=edit&p=${newP}&a=${params["a"]}&l=solvedup`;
-  }
-
-  /*
-    Normal case:
-    Standard solve-mode answer-check link:
-      ?m=solve&p=...&a=...
-    or
-      #m=solve&p=...&a=...
-
-    Here we decode a= and reconstruct the visible answer layer.
-  */
   const pText = inflateRawB64(params["p"]);
   const aText = inflateRawB64(params["a"]);
 
@@ -468,15 +423,49 @@ async function convertPenpaUrl(inputUrl) {
   addSolutionSuffixToTitle(lines);
   upgradeToolState(lines);
 
-  const problemIndex = findProblemLine(lines);
-  const answerIndex = problemIndex + 1;
-
   const answerObject = buildAnswerObject(answer);
 
-  if (answerIndex >= lines.length) {
-    lines.push(answerObject);
-  } else {
+  /*
+    Find all Penpa object-layer lines.
+
+    Standard payload usually has:
+      objectLines[0] = problem layer
+      objectLines[1] = answer / solution layer
+
+    l=solvedup/edit-mode payloads may have a slightly different layout,
+    so do not blindly use problemIndex + 1.
+  */
+  const objectLines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    if (isPenpaObjectLine(lines[i])) {
+      objectLines.push(i);
+    }
+  }
+
+  if (objectLines.length === 0) {
+    throw new Error("Could not find the problem object line.");
+  }
+
+  const problemIndex = objectLines[0];
+
+  let answerIndex;
+
+  if (objectLines.length >= 2) {
+    /*
+      If a second object layer already exists, replace it.
+      This is safer for l=solvedup links because their payload may already have
+      a placeholder/solution object somewhere other than problemIndex + 1.
+    */
+    answerIndex = objectLines[1];
     lines[answerIndex] = answerObject;
+  } else {
+    /*
+      If only one object layer exists, insert the answer object immediately
+      after the problem object.
+    */
+    answerIndex = problemIndex + 1;
+    lines.splice(answerIndex, 0, answerObject);
   }
 
   for (let i = answerIndex + 1; i < lines.length; i++) {
@@ -493,5 +482,10 @@ async function convertPenpaUrl(inputUrl) {
     throw new Error("Compression/decompression round-trip failed.");
   }
 
+  /*
+    Always output a clean setter-mode edit link.
+    No a=.
+    No l=solvedup.
+  */
   return `${PENPA_BASE}#m=edit&p=${newP}`;
 }
