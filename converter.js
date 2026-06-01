@@ -2,7 +2,7 @@ const PENPA_BASE = "https://swaroopg92.github.io/penpa-edit/";
 
 // Replace this with your actual Cloudflare Worker URL.
 // Example:
-const TINYURL_EXPANDER_WORKER = "https://tinyurl-expand.dyl99dyl.workers.dev/";
+const TINYURL_EXPANDER_WORKER = "https://tinyurl-expand.cyddrdrd.workers.dev/";
 
 
 async function expandShortUrlIfNeeded(url) {
