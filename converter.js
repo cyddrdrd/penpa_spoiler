@@ -7,33 +7,83 @@ async function expandShortUrlIfNeeded(url) {
     return url;
   }
 
-  /*
-    Browser JavaScript usually cannot directly read TinyURL redirects because
-    of CORS. This uses a public URL-expansion API.
+  const services = [
+    async function tryUnshortenMe(shortUrl) {
+      const apiUrl = "https://unshorten.me/json/" + encodeURIComponent(shortUrl);
+      const response = await fetch(apiUrl);
 
-    If this fails, paste the full Penpa link instead.
-  */
-  const apiUrl = "https://unshorten.me/json/" + encodeURIComponent(url);
+      if (!response.ok) {
+        throw new Error("unshorten.me failed");
+      }
 
-  const response = await fetch(apiUrl);
+      const data = await response.json();
 
-  if (!response.ok) {
-    throw new Error("Could not expand TinyURL. Please paste the full Penpa link instead.");
+      return (
+        data.resolved_url ||
+        data.resolvedUrl ||
+        data.destination ||
+        data.url ||
+        ""
+      );
+    },
+
+    async function tryUnshortenIt(shortUrl) {
+      const apiUrl =
+        "https://unshorten.it/json?url=" + encodeURIComponent(shortUrl);
+
+      const response = await fetch(apiUrl);
+
+      if (!response.ok) {
+        throw new Error("unshorten.it failed");
+      }
+
+      const data = await response.json();
+
+      return (
+        data.resolved_url ||
+        data.resolvedUrl ||
+        data.long_url ||
+        data.longUrl ||
+        data.url ||
+        ""
+      );
+    }
+  ];
+
+  const errors = [];
+
+  for (const service of services) {
+    try {
+      const expanded = await service(url);
+
+      if (!expanded) {
+        errors.push("Empty expanded URL");
+        continue;
+      }
+
+      const decodedExpanded = decodeURIComponent(expanded);
+
+      // Important validation:
+      // Some URL expansion services drop the # fragment.
+      // For Penpa answer-check links, that fragment often contains a=.
+      if (
+        decodedExpanded.includes("p=") &&
+        decodedExpanded.includes("a=")
+      ) {
+        return decodedExpanded;
+      }
+
+      errors.push("Expanded URL did not contain both p= and a=: " + decodedExpanded);
+    } catch (err) {
+      errors.push(err.message);
+    }
   }
 
-  const data = await response.json();
-
-  const expanded =
-    data.resolved_url ||
-    data.resolvedUrl ||
-    data.destination ||
-    data.url;
-
-  if (!expanded) {
-    throw new Error("TinyURL expansion failed. Please paste the full Penpa link instead.");
-  }
-
-  return expanded;
+  throw new Error(
+    "TinyURL was expanded, but the expanded URL did not contain both p= and a=. " +
+    "This often happens because some URL-expansion services drop the Penpa # fragment. " +
+    "Please open the TinyURL once, copy the full Penpa URL from the browser address bar, and paste that full URL instead."
+  );
 }
 
 function parsePenpaParams(url) {
