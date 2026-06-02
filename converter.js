@@ -1,5 +1,6 @@
 const PENPA_BASE = "https://swaroopg92.github.io/penpa-edit/";
 const TINYURL_EXPANDER_WORKER = "https://tinyurl-expand.cyddrdrd.workers.dev/";
+const PENPA_CLONE_WORKER = "https://penpa-clone.cyddrdrd.workers.dev/";
 
 
 async function expandShortUrlIfNeeded(url) {
@@ -38,6 +39,32 @@ async function expandShortUrlIfNeeded(url) {
   }
 
   return expanded;
+}
+
+
+async function clonePenpaUrlIfNeeded(url, shouldClone) {
+  if (!shouldClone) {
+    return url;
+  }
+
+  const apiUrl = PENPA_CLONE_WORKER + "?url=" + encodeURIComponent(url);
+
+  const response = await fetch(apiUrl);
+
+  if (!response.ok) {
+    throw new Error("Could not clone Penpa URL automatically.");
+  }
+
+  const data = await response.json();
+
+  if (!data.success || !data.clonedUrl) {
+    throw new Error(
+      "Penpa auto-clone failed: " +
+      (data.error || "unknown error")
+    );
+  }
+
+  return data.clonedUrl;
 }
 
 
@@ -374,6 +401,9 @@ function cleanSolvedupProgressInPlace(lines, problemIndex, answerObject) {
       - keep the problem layer
       - overwrite the next line with the reconstructed answer layer
       - clear later progress/history/object layers in place
+
+    The resulting preliminary URL is then sent to the penpa-clone Worker.
+    Penpa itself normalizes it through pu.maketext_duplicate().
   */
 
   const answerIndex = problemIndex + 1;
@@ -580,5 +610,8 @@ async function convertPenpaUrl(inputUrl) {
     throw new Error("Compression/decompression round-trip failed.");
   }
 
-  return `${PENPA_BASE}#m=edit&p=${newP}`;
+  const preliminaryUrl = `${PENPA_BASE}#m=edit&p=${newP}`;
+
+  // solvedup links need Penpa's own clone/normalization step.
+  return await clonePenpaUrlIfNeeded(preliminaryUrl, isSolvedup);
 }
