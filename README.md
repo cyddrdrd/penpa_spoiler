@@ -2,6 +2,7 @@
 
 This tool is intended for puzzle setters, testers, and technical inspection of Penpa+ links. 
 Please respect puzzle authors and do not use this tool to spoil puzzles for others without permission.
+This tool may log conversion time, input/output URLs, etc for debugging.
 
 ---
 
