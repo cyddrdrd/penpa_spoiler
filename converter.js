@@ -325,6 +325,64 @@ function findProblemLine(lines) {
 }
 
 
+function findPenpaObjectLines(lines) {
+  const indices = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    if (isPenpaObjectLine(lines[i])) {
+      indices.push(i);
+    }
+  }
+
+  return indices;
+}
+
+
+function insertOrReplaceAnswerLayer(lines, problemIndex, answerObject) {
+  const objectLines = findPenpaObjectLines(lines);
+
+  /*
+    Normal full Penpa payload:
+      first object line  = problem layer
+      second object line = answer/solution layer
+
+    If a second object layer already exists, replace that.
+  */
+  if (objectLines.length >= 2) {
+    const secondObjectIndex = objectLines[1];
+    lines[secondObjectIndex] = answerObject;
+    return secondObjectIndex;
+  }
+
+  /*
+    Older/simple payload:
+      the line after the problem object may be an empty placeholder.
+    In that case replacement is safe.
+  */
+  const nextIndex = problemIndex + 1;
+
+  if (
+    nextIndex < lines.length &&
+    (
+      lines[nextIndex].trim() === "" ||
+      lines[nextIndex].trim() === "x" ||
+      lines[nextIndex].trim() === "{}"
+    )
+  ) {
+    lines[nextIndex] = answerObject;
+    return nextIndex;
+  }
+
+  /*
+    Special cloned-solve / solvedup payload:
+    do not overwrite the next line, because it may contain structural data.
+    Insert a new answer layer after the problem layer instead.
+  */
+  lines.splice(nextIndex, 0, answerObject);
+  return nextIndex;
+}
+
+
 function upgradeToolState(lines) {
   if (lines.length <= 2) return;
 
@@ -424,15 +482,13 @@ async function convertPenpaUrl(inputUrl) {
   upgradeToolState(lines);
 
   const problemIndex = findProblemLine(lines);
-  const answerIndex = problemIndex + 1;
-
   const answerObject = buildAnswerObject(answer);
 
-  if (answerIndex >= lines.length) {
-    lines.push(answerObject);
-  } else {
-    lines[answerIndex] = answerObject;
-  }
+  const answerIndex = insertOrReplaceAnswerLayer(
+    lines,
+    problemIndex,
+    answerObject
+  );
 
   for (let i = answerIndex + 1; i < lines.length; i++) {
     if (lines[i] === "x" && i > answerIndex + 5) {
