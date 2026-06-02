@@ -338,6 +338,47 @@ function findPenpaObjectLines(lines) {
 }
 
 
+function cleanSolvedupProgress(lines, problemIndex) {
+  /*
+    solvedup links are cloned from solve mode.
+
+    The p= payload may contain:
+      - problem layer
+      - current solving-progress layer
+      - answer-check / solve history layers
+      - other temporary solve-mode state
+
+    If we keep those layers and then add our reconstructed answer layer,
+    Penpa may load a broken grid in setter mode.
+
+    Therefore, for l=solvedup links, keep only the problem layer and remove
+    extra Penpa object/history layers after it before inserting the fresh answer
+    layer reconstructed from a=.
+  */
+
+  // Remove all Penpa object layers after the problem layer.
+  for (let i = lines.length - 1; i > problemIndex; i--) {
+    if (isPenpaObjectLine(lines[i])) {
+      lines.splice(i, 1);
+    }
+  }
+
+  // Remove obvious solve-progress/history lines after the problem layer.
+  for (let i = lines.length - 1; i > problemIndex; i--) {
+    const line = lines[i];
+
+    if (
+      line.includes("pu_q") ||
+      line.includes("pu_a") ||
+      line.includes("pu_a_col") ||
+      line.includes("solvedup")
+    ) {
+      lines.splice(i, 1);
+    }
+  }
+}
+
+
 function insertOrReplaceAnswerLayer(lines, problemIndex, answerObject) {
   const objectLines = findPenpaObjectLines(lines);
 
@@ -374,7 +415,7 @@ function insertOrReplaceAnswerLayer(lines, problemIndex, answerObject) {
   }
 
   /*
-    Special cloned-solve / solvedup payload:
+    Other unusual payload:
     do not overwrite the next line, because it may contain structural data.
     Insert a new answer layer after the problem layer instead.
   */
@@ -484,11 +525,20 @@ async function convertPenpaUrl(inputUrl) {
   const problemIndex = findProblemLine(lines);
   const answerObject = buildAnswerObject(answer);
 
-  const answerIndex = insertOrReplaceAnswerLayer(
-    lines,
-    problemIndex,
-    answerObject
-  );
+  let answerIndex;
+
+  if (params["l"] === "solvedup") {
+    cleanSolvedupProgress(lines, problemIndex);
+
+    answerIndex = problemIndex + 1;
+    lines.splice(answerIndex, 0, answerObject);
+  } else {
+    answerIndex = insertOrReplaceAnswerLayer(
+      lines,
+      problemIndex,
+      answerObject
+    );
+  }
 
   for (let i = answerIndex + 1; i < lines.length; i++) {
     if (lines[i] === "x" && i > answerIndex + 5) {
