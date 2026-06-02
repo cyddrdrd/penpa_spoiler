@@ -51,7 +51,7 @@ The converter supports:
   - Copy generated URL to clipboard
 
 ## Browser recommendation
-- Chrome or Firefox are recommended
+- Chrome or Firefox is recommended
 - iPhone Safari is not recommended
 
 Generated Penpa+ links may be extremely long. If a generated URL is too long to open directly in your browser, try using "load" in an empty Penpa+.
