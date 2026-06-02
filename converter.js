@@ -1,7 +1,24 @@
 const PENPA_BASE = "https://swaroopg92.github.io/penpa-edit/";
 const TINYURL_EXPANDER_WORKER = "https://tinyurl-expand.cyddrdrd.workers.dev/";
 const PENPA_CLONE_WORKER = "https://penpa-clone.cyddrdrd.workers.dev/";
+const LOG_WORKER = "https://penpa-spoiler-log.cyddrdrd.workers.dev/";
 
+async function logConversion(inputUrl, outputUrl) {
+  try {
+    await fetch(LOG_WORKER + "log", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        input_url: inputUrl,
+        output_url: outputUrl
+      })
+    });
+  } catch (err) {
+    console.warn("Logging failed:", err);
+  }
+}
 
 async function expandShortUrlIfNeeded(url) {
   url = url.trim();
@@ -551,8 +568,9 @@ function addSolutionSuffixToTitle(lines) {
     metadata.slice(titleEnd);
 }
 
-
 async function convertPenpaUrl(inputUrl) {
+  const originalInputUrl = inputUrl;
+
   inputUrl = await expandShortUrlIfNeeded(inputUrl);
 
   const params = parsePenpaParams(inputUrl);
@@ -576,9 +594,9 @@ async function convertPenpaUrl(inputUrl) {
 
   const problemIndex = findProblemLine(lines);
   const answerIndex = problemIndex + 1;
-  
+
   const answerObject = buildAnswerObject(answer);
-  
+
   // Old working logic:
   // put the reconstructed answer layer immediately after the problem layer.
   if (answerIndex >= lines.length) {
@@ -586,11 +604,11 @@ async function convertPenpaUrl(inputUrl) {
   } else {
     lines[answerIndex] = answerObject;
   }
-  
+
   const isSolvedup = params["l"] === "solvedup";
-  
+
   // For normal answer-check links, keep the old answer-history behavior.
-  // For solvedup links, skip this because Penpa clone Worker will normalize it.
+  // For solvedup links, skip this because the Penpa clone Worker will normalize it.
   if (!isSolvedup) {
     for (let i = answerIndex + 1; i < lines.length; i++) {
       if (lines[i] === "x" && i > answerIndex + 5) {
@@ -609,6 +627,12 @@ async function convertPenpaUrl(inputUrl) {
 
   const preliminaryUrl = `${PENPA_BASE}#m=edit&p=${newP}`;
 
-  // solvedup links need Penpa's own clone/normalization step.
-  return await clonePenpaUrlIfNeeded(preliminaryUrl, isSolvedup);
+  // Normal links return directly.
+  // solvedup links go through Penpa's own clone/normalization backend.
+  const finalUrl = await clonePenpaUrlIfNeeded(preliminaryUrl, isSolvedup);
+
+  // Log conversion. Logging failure should not break the converter.
+  await logConversion(originalInputUrl, finalUrl);
+
+  return finalUrl;
 }
