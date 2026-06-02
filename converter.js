@@ -223,6 +223,33 @@ function buildAnswerObject(answer) {
 }
 
 
+function emptyPenpaObject() {
+  return (
+    "{" +
+    "zR:{z_:[]}," +
+    "zU:{z_:[]}," +
+    "z8:{z_:[]}," +
+    "zS:{}," +
+    "zN:{}," +
+    "z1:{}," +
+    "zY:{}," +
+    "zT:[]," +
+    "z3:[]," +
+    "zD:[]," +
+    "z0:[]," +
+    "z5:[]," +
+    "zL:{}," +
+    "zE:{}," +
+    "zW:{}," +
+    "zC:{}," +
+    "z4:{}," +
+    "z6:[]," +
+    "z7:[]" +
+    "}"
+  );
+}
+
+
 function buildAnswerHistoryObject(answer) {
   answer = normalizeAnswer(answer);
 
@@ -338,34 +365,32 @@ function findPenpaObjectLines(lines) {
 }
 
 
-function cleanSolvedupProgress(lines, problemIndex) {
+function cleanSolvedupProgressInPlace(lines, problemIndex, answerObject) {
   /*
-    solvedup links are cloned from solve mode.
+    For solvedup links, p= may contain solving progress.
+    Do NOT insert/delete lines, because Penpa payloads are partly line-position based.
 
-    The p= payload may contain:
-      - problem layer
-      - current solving-progress layer
-      - answer-check / solve history layers
-      - other temporary solve-mode state
-
-    If we keep those layers and then add our reconstructed answer layer,
-    Penpa may load a broken grid in setter mode.
-
-    Therefore, for l=solvedup links, keep only the problem layer and remove
-    extra Penpa object/history layers after it before inserting the fresh answer
-    layer reconstructed from a=.
+    Strategy:
+      - keep the problem layer
+      - overwrite the next line with the reconstructed answer layer
+      - clear later progress/history/object layers in place
   */
 
-  // Remove all Penpa object layers after the problem layer.
-  for (let i = lines.length - 1; i > problemIndex; i--) {
-    if (isPenpaObjectLine(lines[i])) {
-      lines.splice(i, 1);
-    }
+  const answerIndex = problemIndex + 1;
+
+  if (answerIndex >= lines.length) {
+    lines.push(answerObject);
+  } else {
+    lines[answerIndex] = answerObject;
   }
 
-  // Remove obvious solve-progress/history lines after the problem layer.
-  for (let i = lines.length - 1; i > problemIndex; i--) {
+  for (let i = answerIndex + 1; i < lines.length; i++) {
     const line = lines[i];
+
+    if (isPenpaObjectLine(line)) {
+      lines[i] = emptyPenpaObject();
+      continue;
+    }
 
     if (
       line.includes("pu_q") ||
@@ -373,9 +398,12 @@ function cleanSolvedupProgress(lines, problemIndex) {
       line.includes("pu_a_col") ||
       line.includes("solvedup")
     ) {
-      lines.splice(i, 1);
+      lines[i] = "x";
+      continue;
     }
   }
+
+  return answerIndex;
 }
 
 
@@ -395,11 +423,6 @@ function insertOrReplaceAnswerLayer(lines, problemIndex, answerObject) {
     return secondObjectIndex;
   }
 
-  /*
-    Older/simple payload:
-      the line after the problem object may be an empty placeholder.
-    In that case replacement is safe.
-  */
   const nextIndex = problemIndex + 1;
 
   if (
@@ -415,9 +438,8 @@ function insertOrReplaceAnswerLayer(lines, problemIndex, answerObject) {
   }
 
   /*
-    Other unusual payload:
-    do not overwrite the next line, because it may contain structural data.
-    Insert a new answer layer after the problem layer instead.
+    Do not overwrite a non-empty structural line.
+    For ordinary non-solvedup payloads, inserting here has worked better.
   */
   lines.splice(nextIndex, 0, answerObject);
   return nextIndex;
@@ -526,12 +548,14 @@ async function convertPenpaUrl(inputUrl) {
   const answerObject = buildAnswerObject(answer);
 
   let answerIndex;
+  const isSolvedup = params["l"] === "solvedup";
 
-  if (params["l"] === "solvedup") {
-    cleanSolvedupProgress(lines, problemIndex);
-
-    answerIndex = problemIndex + 1;
-    lines.splice(answerIndex, 0, answerObject);
+  if (isSolvedup) {
+    answerIndex = cleanSolvedupProgressInPlace(
+      lines,
+      problemIndex,
+      answerObject
+    );
   } else {
     answerIndex = insertOrReplaceAnswerLayer(
       lines,
@@ -540,10 +564,12 @@ async function convertPenpaUrl(inputUrl) {
     );
   }
 
-  for (let i = answerIndex + 1; i < lines.length; i++) {
-    if (lines[i] === "x" && i > answerIndex + 5) {
-      lines[i] = buildAnswerHistoryObject(answer);
-      break;
+  if (!isSolvedup) {
+    for (let i = answerIndex + 1; i < lines.length; i++) {
+      if (lines[i] === "x" && i > answerIndex + 5) {
+        lines[i] = buildAnswerHistoryObject(answer);
+        break;
+      }
     }
   }
 
