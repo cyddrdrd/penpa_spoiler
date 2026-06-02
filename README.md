@@ -66,16 +66,16 @@ Generated Penpa+ links may be extremely long. If a generated URL is too long to 
 
 The project has three main frontend files:
 
-  text index.html            Webpage 
-  structure page.js          Button logic and page interaction
-  converter.js               Main Penpa+ decoding/conversion logic 
+  - text index.html            Webpage 
+  - structure page.js          Button logic and page interaction
+  - converter.js               Main Penpa+ decoding/conversion logic 
 
 The frontend performs the main Penpa+ decoding in the browser using JavaScript and pako for raw deflate/inflate compression.
 
 Two Cloudflare Workers are used for special cases:
 
-  tinyurl-expand             Expands tinyurl.com links into full Penpa+ links
-  penpa-clone                Uses Penpa+'s own clone logic to normalize solvedup links 
+  - tinyurl-expand             Expands tinyurl.com links into full Penpa+ links
+  - penpa-clone                Uses Penpa+'s own clone logic to normalize solvedup links 
 
 Normal answer-check links are converted directly in the browser. Solvedup links require the clone backend and may take several seconds longer.
 
