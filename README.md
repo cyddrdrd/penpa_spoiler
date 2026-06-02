@@ -51,14 +51,8 @@ The converter supports:
   - Copy generated URL to clipboard
 
 ## Browser recommendation
-Recommended browsers:
-  - Chrome or Firefox 
-
-Usually OK:
-  - Edge / Desktop Safari / iPad Safari 
-
-Potentially problematic:
-  - iPhone Safari 
+- Chrome or Firefox are recommended
+- iPhone Safari is not recommended
 
 Generated Penpa+ links may be extremely long. If a generated URL is too long to open directly in your browser, try using "load" in an empty Penpa+.
 
@@ -66,16 +60,16 @@ Generated Penpa+ links may be extremely long. If a generated URL is too long to 
 
 The project has three main frontend files:
 
-  - text index.html            Webpage 
-  - structure page.js          Button logic and page interaction
-  - converter.js               Main Penpa+ decoding/conversion logic 
+  - text index.html for the Webpage 
+  - structure page.js for the Button logic and page interaction
+  - converter.js for the Main Penpa+ decoding/conversion logic 
 
 The frontend performs the main Penpa+ decoding in the browser using JavaScript and pako for raw deflate/inflate compression.
 
 Two Cloudflare Workers are used for special cases:
 
-  - tinyurl-expand             Expands tinyurl.com links into full Penpa+ links
-  - penpa-clone                Uses Penpa+'s own clone logic to normalize solvedup links 
+  - tinyurl-expand expands tinyurl.com links into full Penpa+ links
+  - penpa-clone uses Penpa+'s own clone logic to normalize solvedup links 
 
 Normal answer-check links are converted directly in the browser. Solvedup links require the clone backend and may take several seconds longer.
 
