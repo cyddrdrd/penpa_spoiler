@@ -5,7 +5,7 @@ All notable changes to this project are documented here.
 ## [0.7.0] - 2026-06-02
 
 ### Added
-- Added another log to record uses, including time, input, output...
+- Added a private log to record uses, including time, input, output...
 
 ---
 
