@@ -7,7 +7,7 @@ Please respect puzzle authors and do not use this tool to spoil puzzles for othe
 
 # Penpa+ Spoiler
 
-Penpa+ Spoiler is a small web tool for converting Penpa+ answer-check links into editable Penpa+ solution links.
+Penpa+ Spoiler is a small web tool for converting Penpa+ answer-check links into Penpa+ solution links (setter mode).
 It is designed for puzzle setters, testers, and those who want to recover or inspect the solution from a Penpa+ answer-check link.
 
 Website: https://cyddrdrd.github.io/penpa_spoiler/ 
