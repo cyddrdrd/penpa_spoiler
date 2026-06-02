@@ -575,25 +575,22 @@ async function convertPenpaUrl(inputUrl) {
   upgradeToolState(lines);
 
   const problemIndex = findProblemLine(lines);
+  const answerIndex = problemIndex + 1;
+  
   const answerObject = buildAnswerObject(answer);
-
-  let answerIndex;
-  const isSolvedup = params["l"] === "solvedup";
-
-  if (isSolvedup) {
-    answerIndex = cleanSolvedupProgressInPlace(
-      lines,
-      problemIndex,
-      answerObject
-    );
+  
+  // Old working logic:
+  // put the reconstructed answer layer immediately after the problem layer.
+  if (answerIndex >= lines.length) {
+    lines.push(answerObject);
   } else {
-    answerIndex = insertOrReplaceAnswerLayer(
-      lines,
-      problemIndex,
-      answerObject
-    );
+    lines[answerIndex] = answerObject;
   }
-
+  
+  const isSolvedup = params["l"] === "solvedup";
+  
+  // For normal answer-check links, keep the old answer-history behavior.
+  // For solvedup links, skip this because Penpa clone Worker will normalize it.
   if (!isSolvedup) {
     for (let i = answerIndex + 1; i < lines.length; i++) {
       if (lines[i] === "x" && i > answerIndex + 5) {
