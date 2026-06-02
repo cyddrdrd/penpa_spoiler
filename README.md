@@ -37,11 +37,11 @@ The converter supports:
 
 - Decode Penpa+ answer-check links into solution links in setter mode.
 - Reconstruct answer-check objects such as:
-  - shaded cells
-  - numbers / sudoku entries
+  - colours
+  - numbers / sudokus
   - lines
   - edges
-  - walls
+  - ...
 - Add (solution) to the puzzle title automatically.
 - Support TinyURL expansion through a Cloudflare Worker backend.
 - Support solvedup links through automatic Penpa+ clone normalization.
